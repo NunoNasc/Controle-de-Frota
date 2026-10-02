@@ -1,0 +1,33 @@
+import {preventiveLabels} from '@/lib/preventive';
+import Link from 'next/link';
+import { ArrowRight, ArrowUpRight, BellRing, CalendarClock, CheckCircle2, ClipboardList, Clock3, OctagonAlert, Truck, Wrench } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { DashboardFilters } from '@/components/dashboard-filters';
+import { OperationalTable } from '@/components/operational-table';
+import { labels } from '@/components/status-badge';
+import { getDashboard } from '@/lib/dashboard-data';
+import { dashboardHref,parseDashboardFilters,viewLabels,type DashboardView,type OperationalRow } from '@/lib/dashboard-domain';
+export const metadata = { title:'Dashboard Operacional' };
+export default async function Dashboard({ searchParams }:{ searchParams:Promise<Record<string,string|string[]|undefined>> }) {
+  const filters = parseDashboardFilters(await searchParams); const data = await getDashboard(filters);
+  const metrics = [
+    { key:'frota',icon:Truck,tone:'slate',note:'Veículos cadastrados' }, { key:'disponiveis',icon:CheckCircle2,tone:'green',note:'Prontos para saída' },
+    { key:'manutencao',icon:Wrench,tone:'blue',note:'Veículos na oficina' }, { key:'parados',icon:OctagonAlert,tone:'red',note:'Operação interrompida' },
+    { key:'criticos',icon:BellRing,tone:'red',note:'Alertas não resolvidos' }, { key:'pendentes',icon:ClipboardList,tone:'yellow',note:'Sem checklist de saída hoje' },
+    { key:'vencidas',icon:CalendarClock,tone:'orange',note:'Prazo ou km ultrapassado' }, { key:'ocorrencias',icon:Clock3,tone:'orange',note:'Pendentes ou em atendimento' },
+  ] as const;
+  const critical = data.actions.filter(r => r.priority === 'CRITICAL').length; const filtersKey = JSON.stringify(filters);
+  return <div className="page operational-page"><header className="page-heading"><div><div className="eyebrow">CONTROLE DA OPERAÇÃO</div><h1>Dashboard Operacional</h1><p>Disponibilidade, riscos e próximas ações em um só lugar.</p></div><div className="op-live"><span/><span>Atualização automática · 30 s</span></div></header>
+    <DashboardFilters costCenters={data.costCenters} vehicles={data.vehicleOptions} updatedAt={data.updatedAt}/>
+    <div className="op-metrics">{metrics.map(({ key,icon:Icon,tone,note }) => <Link key={key} href={dashboardHref(key,filters)} className={`op-metric op-tone-${tone}`} data-metric={key} aria-label={`${viewLabels[key]}: ${data.counts[key]}. Abrir registros relacionados`}><div className="op-metric-label"><span>{viewLabels[key]}</span><Icon size={17}/></div><div className="op-metric-value"><strong>{data.counts[key].toString().padStart(2,'0')}</strong><ArrowUpRight size={17}/></div><p>{note}</p></Link>)}</div>
+    {!!data.statuses.find(s => s.status === 'UNKNOWN')?.count && <p className="mb-5 rounded-lg bg-blue-50 p-4 text-sm text-blue-900">{data.statuses.find(s => s.status === 'UNKNOWN')?.count} veículos estão com a situação operacional não informada. Disponibilidade, manutenção e pendências serão contabilizadas conforme os registros reais forem cadastrados.</p>}
+    <Card className="op-action-panel"><div className="op-section-heading"><div><div className="flex items-center gap-3"><h2>REQUER AÇÃO</h2><span className="op-count">{data.actions.length}</span></div><p>Somente pendências de intervenção · prioridade e maior tempo em aberto primeiro</p></div><div className="flex items-center gap-4">{critical > 0 && <span className="badge badge-red">{critical} {critical === 1 ? 'crítica' : 'críticas'}</span>}<Link className="subtle-link" href={dashboardHref('acoes',filters)}>Ver todas<ArrowRight size={14}/></Link></div></div><OperationalTable key={`actions:${filtersKey}`} rows={data.actions}/><div className="op-rule-note">Checklist pendente: veículo ativo apto à operação sem inspeção de saída hoje. Pendências sem data de detecção continuam visíveis em qualquer período.</div></Card>
+    <Card className="op-status-panel"><div className="op-section-heading"><div><h2>STATUS DA FROTA</h2><p>Distribuição atual · clique em um status para consultar os veículos</p></div><Link href={dashboardHref('frota',filters)} className="subtle-link">Consultar frota<ArrowRight size={14}/></Link></div><div className="op-status-grid">{data.statuses.map(s => <Link key={s.status} href={dashboardHref('frota',{ ...filters,status:s.status })} className={`op-fleet-state state-${s.status.toLowerCase()}`}><span>{labels[s.status]}</span><strong>{s.count.toString().padStart(2,'0')}</strong><ArrowUpRight size={15}/></Link>)}</div></Card>
+    <OperationSection title="MANUTENÇÕES EM ANDAMENTO" description="Ordens em execução, responsável e previsão de entrega" view="servicos" rows={data.views.servicos} filters={filters} filtersKey={filtersKey}/>
+    <section className="mb-5 rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-semibold">CONTROLE DE PREVENTIVAS POR VEÍCULO</h2><p className="mt-1 text-xs text-slate-500">Situação atual nos filtros de frota e criticidade · antecedência e tolerância de cada veículo</p><div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">{Object.entries(data.planIndicators).map(([status,count])=><Link key={status} className="rounded-lg bg-slate-50 p-3" href={`/preventivas?${new URLSearchParams({status,vehicle:filters.vehicle,costCenter:filters.costCenter,vehicleStatus:filters.status,priority:filters.priority})}`}><span className="text-xs text-slate-500">{preventiveLabels[status as keyof typeof preventiveLabels]}</span><strong className="mt-2 block text-2xl">{count}</strong></Link>)}</div></section><OperationSection title="PREVENTIVAS PRÓXIMAS DO VENCIMENTO" description="Antecedência configurada por veículo · atenção e vencidas aparecem em Requer ação" view="proximas" rows={data.views.proximas} filters={filters} filtersKey={filtersKey}/>
+    <OperationSection title="CHECKLISTS COM NÃO CONFORMIDADE" description="Inspeções com problema aguardando revisão da Frota" view="inconformes" rows={data.views.inconformes} filters={filters} filtersKey={filtersKey}/>
+  </div>;
+}
+function OperationSection({ title,description,view,rows,filters,filtersKey }:{ title:string;description:string;view:DashboardView;rows:OperationalRow[];filters:ReturnType<typeof parseDashboardFilters>;filtersKey:string }) {
+  return <Card className="op-detail-panel"><div className="op-section-heading"><div><div className="flex items-center gap-3"><h2>{title}</h2><span className="op-count">{rows.length}</span></div><p>{description}</p></div><Link className="subtle-link" href={dashboardHref(view,filters)}>Ver registros<ArrowRight size={14}/></Link></div><OperationalTable key={`${view}:${filtersKey}`} rows={rows} compact pageSize={5} emptyMessage="Nenhum registro nesta situação com os filtros selecionados."/></Card>;
+}

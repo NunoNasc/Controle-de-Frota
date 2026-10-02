@@ -1,0 +1,5 @@
+import {alertPriorities} from '@/lib/alerts';
+export function AlertEventData({before,after}:{before:Record<string,unknown>|null;after:Record<string,unknown>}){
+ const priority=(v:unknown)=>alertPriorities[v as keyof typeof alertPriorities]??'Não informada';
+ return <details className="mt-2 text-xs text-slate-500"><summary className="cursor-pointer">Dados preservados deste evento</summary><dl className="mt-3 space-y-2 break-words rounded bg-slate-50 p-3"><div><dt className="font-semibold">Prioridade</dt><dd>{before?`${priority(before.priority)} → `:''}{priority(after.priority)}</dd></div><div><dt className="font-semibold">Ação necessária</dt><dd className="whitespace-pre-wrap">{String(after.actionRequired??'Não informada')}</dd>{before?.actionRequired!==after.actionRequired&&before?.actionRequired!==undefined&&<dd className="mt-1 whitespace-pre-wrap">Anterior: {String(before.actionRequired)}</dd>}</div>{after.closingReason? <div><dt className="font-semibold">Motivo do encerramento</dt><dd className="whitespace-pre-wrap">{String(after.closingReason)}</dd></div>:null}</dl></details>;
+}

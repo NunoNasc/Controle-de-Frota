@@ -1,0 +1,5 @@
+import {prisma} from './prisma';
+export async function getMaintenanceOptions(){
+ const [vehicles,staff,suppliers,incidents,scs,orders]=await Promise.all([prisma.vehicle.findMany({orderBy:{plate:'asc'}}),prisma.staffMember.findMany({orderBy:{name:'asc'}}),prisma.supplier.findMany({orderBy:{name:'asc'}}),prisma.incident.findMany({orderBy:{openedAt:'desc'}}),prisma.purchaseRequisition.findMany({orderBy:{number:'asc'}}),prisma.purchaseOrder.findMany({orderBy:{number:'asc'}})]);
+ return {vehicles:vehicles.map(v=>({id:v.id,label:`${v.plate} · ${v.model}`,active:v.active&&v.status!=='INACTIVE'})),staff:staff.map(s=>({id:s.id,label:`${s.name} · ${s.employeeId}`,active:s.active})),suppliers:suppliers.map(s=>({id:s.id,label:s.tradeName??s.name,active:s.active&&s.status==='ACTIVE'})),incidents:incidents.map(i=>({id:i.id,label:`${i.publicNumber} · ${i.title}`,vehicleId:i.vehicleId})),scs:scs.map(s=>({id:s.id,label:s.number})),orders:orders.map(o=>({id:o.id,label:o.orderNumber??`Solicitação ${o.number.slice(0,12)}`,vehicleId:o.vehicleId}))};
+}

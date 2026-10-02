@@ -1,0 +1,8 @@
+import { cn } from '@/lib/utils';
+export const labels: Record<string, string> = { NOT_APPLICABLE: 'Não se aplica', UNKNOWN: 'Não informado', AVAILABLE: 'Disponível', IN_USE: 'Em operação', MAINTENANCE: 'Em manutenção', STOPPED: 'Parado', INACTIVE: 'Inativo', OPEN: 'Pendente', IN_PROGRESS: 'Em andamento', COMPLETED: 'Concluído', CANCELED: 'Cancelado', LOW: 'Normal', MEDIUM: 'Atenção', HIGH: 'Urgente', CRITICAL: 'Crítico', OK: 'Conforme', ISSUE: 'Com ressalva', OVERDUE: 'Vencido', ACTIVE: 'Ativo' };
+const styles: Record<string, string> = { AVAILABLE: 'badge-green', IN_USE: 'badge-blue', MAINTENANCE: 'badge-orange', STOPPED: 'badge-red', INACTIVE: 'badge-gray', OPEN: 'badge-yellow', IN_PROGRESS: 'badge-blue', COMPLETED: 'badge-green', CANCELED: 'badge-gray', LOW: 'badge-green', MEDIUM: 'badge-yellow', HIGH: 'badge-orange', CRITICAL: 'badge-red', OK: 'badge-green', ISSUE: 'badge-yellow', OVERDUE: 'badge-red', ACTIVE: 'badge-green' };
+Object.assign(labels, { NOT_EVALUATED: 'Não avaliado', ON_LEAVE: 'Afastado', SUSPENDED: 'Suspenso', SUBMITTED: 'Enviado', REVIEWED: 'Revisado', DRAFT: 'Rascunho' });
+Object.assign(styles, { NOT_EVALUATED: 'badge-gray', ON_LEAVE: 'badge-yellow', SUSPENDED: 'badge-red', SUBMITTED: 'badge-blue', REVIEWED: 'badge-green', DRAFT: 'badge-gray' });
+Object.assign(labels,{AWAITING_ASSESSMENT:'Aguardando avaliação',BLOCKED:'Bloqueado',RELEASED:'Liberado'});
+Object.assign(styles,{AWAITING_ASSESSMENT:'badge-orange',BLOCKED:'badge-red',RELEASED:'badge-green'});
+export function StatusBadge({ status }: { status: string }) { return <span className={cn('badge', styles[status] ?? 'badge-gray')}>{labels[status] ?? status}</span>; }

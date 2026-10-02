@@ -1,0 +1,10 @@
+import Link from 'next/link';
+import {prisma} from '@/lib/prisma';
+import {restrictionPolicyKey,parseRestrictionPolicy,restrictionLabels} from '@/lib/restrictions';
+import {RestrictionPolicyForm} from '@/components/restriction-policy-form';
+import {incidentDate} from '@/lib/incidents';
+export const dynamic='force-dynamic';
+export default async function RestrictionSettings(){
+ const [setting,events]=await Promise.all([prisma.setting.findUniqueOrThrow({where:{key:restrictionPolicyKey}}),prisma.restrictionPolicyEvent.findMany({orderBy:{createdAt:'desc'},take:30})]);
+ return <div className="page"><Link className="subtle-link" href="/configuracoes">← Configurações</Link><div className="page-heading mt-5"><div><div className="eyebrow">CONTROLE OPERACIONAL</div><h1>Bloqueios e liberações</h1><p>Defina o tratamento inicial das restrições e a exigência de evidência.</p></div></div><Link className="subtle-link" href="/configuracoes/checklist">Configurar criticidade e bloqueio por item →</Link><RestrictionPolicyForm key={setting.updatedAt.toISOString()} updatedAt={setting.updatedAt.toISOString()} policy={parseRestrictionPolicy(setting.value)}/><section className="mt-6 max-w-2xl"><h2 className="font-semibold">Histórico da configuração</h2><p className="mt-1 text-xs text-slate-500">Últimas 30 alterações. O histórico completo permanece preservado no banco.</p>{events.length?events.map(e=>{const before=parseRestrictionPolicy(e.before),after=parseRestrictionPolicy(e.after);return <div key={e.id} className="mt-3 rounded-lg border border-slate-200 bg-white p-4 text-sm"><p>{incidentDate(e.createdAt)} · {e.actor}</p><p className="mt-2">Estado inicial: {restrictionLabels[before.initialState]} → {restrictionLabels[after.initialState]}</p><p>Evidência: {before.releaseEvidenceRequired?'obrigatória':'opcional'} → {after.releaseEvidenceRequired?'obrigatória':'opcional'}</p></div>;}):<p className="mt-3 text-sm text-slate-500">Nenhuma alteração administrativa registrada.</p>}</section></div>;
+}

@@ -1,0 +1,902 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum VehicleStatus {
+  UNKNOWN
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  STOPPED
+  INACTIVE
+}
+
+enum OperationalStatus {
+  CLEAR
+  AWAITING_ASSESSMENT
+  BLOCKED
+}
+
+enum RestrictionState {
+  AWAITING_ASSESSMENT
+  BLOCKED
+  RELEASED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum WorkStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum MaintenanceKind {
+  UNSPECIFIED
+  PREVENTIVE
+  CORRECTIVE
+  PREDICTIVE
+}
+
+enum MaintenanceStage {
+  REQUESTED
+  ANALYSIS
+  AWAITING_QUOTE
+  AWAITING_APPROVAL
+  AWAITING_PART
+  SCHEDULED
+  IN_SERVICE
+  TESTING
+  DONE
+  CANCELED
+}
+
+enum IncidentStage {
+  NEW
+  ANALYSIS
+  AWAITING_APPROVAL
+  AWAITING_PART
+  AWAITING_SUPPLIER
+  SCHEDULED
+  UNDER_MAINTENANCE
+  AWAITING_TEST
+  RELEASED
+  DONE
+  REJECTED
+  VOID
+  CONTINGENCY
+}
+
+enum Availability {
+  UNKNOWN
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum DriverStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum SupplierStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum ChecklistType {
+  UNSPECIFIED
+  PRE_TRIP
+  POST_TRIP
+  PERIODIC
+  EXTRAORDINARY
+}
+
+enum ChecklistStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWED
+  CANCELED
+}
+
+enum ChecklistResult {
+  OK
+  ISSUE
+  NOT_EVALUATED
+}
+
+enum ChecklistResponse {
+  OK
+  ISSUE
+  NOT_APPLICABLE
+}
+
+enum InspectionCategory {
+  TIRES
+  LIGHTING
+  BRAKES
+  FLUIDS
+  SAFETY
+  BODY
+  OTHER
+}
+
+enum IncidentOrigin {
+  UNSPECIFIED
+  MANUAL
+  CHECKLIST
+  MAINTENANCE
+}
+
+model CostCenter {
+  id        String      @id @default(cuid())
+  code      String      @unique
+  name      String
+  active    Boolean     @default(true)
+  vehicles  Vehicle[]
+  equipment Equipment[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+}
+
+/// Operational contacts, not authentication accounts.
+model StaffMember {
+  alerts          Alert[]
+  id              String                @id @default(cuid())
+  employeeId      String                @unique
+  name            String
+  email           String?
+  active          Boolean               @default(true)
+  incidents       Incident[]
+  maintenance     Maintenance[]
+  requestedOrders PurchaseOrder[]       @relation("PurchaseRequester")
+  assignedOrders  PurchaseOrder[]       @relation("PurchaseResponsible")
+  requisitions    PurchaseRequisition[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @default(now()) @updatedAt
+}
+
+model Equipment {
+  id           String          @id @default(cuid())
+  code         String          @unique
+  name         String
+  active       Boolean         @default(true)
+  costCenterId String?
+  costCenter   CostCenter?     @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  purchases    PurchaseOrder[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @default(now()) @updatedAt
+
+  @@index([costCenterId])
+}
+
+/// SC shared by purchase orders and maintenance records.
+model PurchaseRequisition {
+  incidents   Incident[]
+  id          String          @id @default(cuid())
+  number      String          @unique
+  description String
+  requesterId String?
+  requester   StaffMember?    @relation(fields: [requesterId], references: [id], onDelete: Restrict)
+  orders      PurchaseOrder[]
+  maintenance Maintenance[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @default(now()) @updatedAt
+
+  @@index([requesterId])
+}
+
+model Vehicle {
+  fuelRecords FuelRecord[]
+  preventivePlan PreventivePlan?
+  mileageReadings MileageReading[]
+  operationalStatus     OperationalStatus @default(CLEAR)
+  restrictions          VehicleRestriction[]
+  id                    String          @id @default(cuid())
+  plate                 String          @unique
+  code                  String?         @unique
+  model                 String
+  category              String
+  /// Existing code = prefix; category = vehicle type; unit remains the operational unit.
+  profile               String?
+  cargoVolumeM3         Decimal?        @db.Decimal(7, 2)
+  brand                 String?
+  costCenterId          String?
+  costCenter            CostCenter?     @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  year                  Int
+  mileage               Int?
+  unit                  String?
+  status                VehicleStatus   @default(UNKNOWN)
+  availability          Availability    @default(UNKNOWN)
+  active                Boolean         @default(true)
+  lastPreventiveAt      DateTime?
+  nextPreventiveMileage Int?
+  nextPreventiveAt      DateTime?
+  notes                 String          @default("")
+  qrToken               String          @unique @default(uuid())
+  qrRevision            Int             @default(0)
+  qrRotatedAt           DateTime?
+  qrEvents              VehicleQrEvent[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  checklists            Checklist[]
+  incidents             Incident[]
+  maintenance           Maintenance[]
+  preventives           Preventive[]
+  tires                 Tire[]
+  documents             Document[]
+  purchases             PurchaseOrder[]
+  alerts                Alert[]
+
+  @@index([status, unit])
+  @@index([costCenterId])
+  @@index([active, availability])
+  @@index([nextPreventiveAt])
+}
+
+model FuelRecord {
+  id String @id @default(cuid())
+  vehicleId String
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  submissionKey String @unique
+  fueledAt DateTime
+  mileage Int
+  fuelType String
+  liters Decimal @db.Decimal(10, 3)
+  amount Decimal @db.Decimal(12, 2)
+  station String @default("")
+  notes String @default("")
+  actor String
+  createdAt DateTime @default(now())
+  @@index([vehicleId, fueledAt])
+}
+
+model VehicleQrEvent {
+  id String @id @default(cuid())
+  vehicleId String
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  actor String
+  reason String
+  previousFingerprint String?
+  nextFingerprint String
+  createdAt DateTime @default(now())
+  @@index([vehicleId, createdAt])
+}
+
+model Driver {
+  id         String       @id @default(cuid())
+  name       String
+  employeeId String       @unique
+  phone      String?
+  license    String       @unique
+  category   String
+  expiresAt  DateTime
+  active     Boolean      @default(true)
+  status     DriverStatus @default(ACTIVE)
+  checklists Checklist[]
+  incidents  Incident[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @default(now()) @updatedAt
+
+  @@index([active, status])
+  @@index([expiresAt])
+}
+
+model Checklist {
+  mileageReading MileageReading?
+  configVersion        String?
+  driverIdentification String?
+  id                   String            @id @default(cuid())
+  vehicleId            String
+  vehicle              Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  driverId             String?
+  driver               Driver?           @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  driverName           String
+  mileage              Int
+  result               ChecklistResult
+  type                 ChecklistType     @default(PRE_TRIP)
+  status               ChecklistStatus   @default(SUBMITTED)
+  latitude             Decimal?          @db.Decimal(10, 7)
+  longitude            Decimal?          @db.Decimal(10, 7)
+  locationAccuracy     Decimal?          @db.Decimal(10, 2)
+  locationLabel        String?
+  /// Null means no applicable answers exist; otherwise 0..100.
+  conformityPercentage Decimal?          @db.Decimal(5, 2)
+  hasProblem           Boolean           @default(false)
+  notes                String            @default("")
+  submittedAt          DateTime          @default(now())
+  submissionKey        String            @unique
+  answers              ChecklistAnswer[]
+  incidents            Incident[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @default(now()) @updatedAt
+
+  @@index([vehicleId, submittedAt])
+  @@index([driverId, submittedAt])
+  @@index([status, hasProblem])
+}
+
+model ChecklistAnswer {
+  evaluation        ChecklistEvaluation?
+  configItemId      String?
+  configItem        ChecklistItemConfig? @relation(fields: [configItemId], references: [id], onDelete: Restrict)
+  itemLabel         String?
+  categoryLabel     String?
+  requiresPhoto     Boolean @default(false)
+  incidentRule      Boolean @default(false)
+  blocksVehicle     Boolean @default(false)
+  allowsNotApplicable Boolean @default(false)
+  problemType       String?
+  id                String             @id @default(cuid())
+  checklistId       String
+  checklist         Checklist          @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  item              String
+  answer            ChecklistResponse
+  category          InspectionCategory @default(OTHER)
+  priority          Priority           @default(LOW)
+  notes             String             @default("")
+  generatesIncident Boolean            @default(false)
+  incidentId        String?
+  incident          Incident?          @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  photos            Evidence[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @default(now()) @updatedAt
+
+  @@unique([checklistId, item])
+  @@index([incidentId])
+}
+
+model Incident {
+  restrictions   VehicleRestriction[]
+  publicNumber   String @unique @default(dbgenerated())
+  stage          IncidentStage @default(NEW)
+  revision       Int @default(0)
+  supplierId     String?
+  supplier       Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  requisitionId  String?
+  requisition    PurchaseRequisition? @relation(fields: [requisitionId], references: [id], onDelete: Restrict)
+  purchaseOrderId String?
+  purchaseOrder  PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  events         IncidentEvent[]
+  attachments    IncidentAttachment[]
+  evaluation     ChecklistEvaluation?
+  id             String             @id @default(cuid())
+  number         Int                @unique @default(autoincrement())
+  origin         IncidentOrigin     @default(MANUAL)
+  vehicleId      String
+  vehicle        Vehicle            @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  driverId       String?
+  driver         Driver?            @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  checklistId    String?
+  checklist      Checklist?         @relation(fields: [checklistId], references: [id], onDelete: Restrict)
+  category       InspectionCategory @default(OTHER)
+  /// Existing title is the problem summary.
+  title          String
+  description    String
+  priority       Priority           @default(MEDIUM)
+  status         WorkStatus         @default(OPEN)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @default(now()) @updatedAt
+  openedAt       DateTime           @default(now())
+  dueAt          DateTime?
+  responsibleId  String?
+  responsible    StaffMember?       @relation(fields: [responsibleId], references: [id], onDelete: Restrict)
+  vehicleBlocked Boolean            @default(false)
+  resolvedAt     DateTime?
+  solution       String?
+  evidence       Evidence[]
+  checklistItems ChecklistAnswer[]
+  maintenance    Maintenance[]
+
+  @@index([status, priority])
+  @@index([vehicleId, openedAt])
+  @@index([driverId])
+  @@index([checklistId])
+  @@index([responsibleId, status])
+  @@index([dueAt])
+  @@index([stage, priority])
+  @@index([supplierId])
+  @@index([requisitionId])
+  @@index([purchaseOrderId])
+}
+
+model IncidentCounter {
+  year Int @id
+  value Int
+}
+
+/// Append-only snapshots. There is no update/delete endpoint for history.
+model IncidentEvent {
+  id String @id @default(cuid())
+  incidentId String
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  kind String
+  actor String
+  note String @default("")
+  before Json?
+  after Json?
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  @@index([incidentId, createdAt])
+}
+
+model IncidentAttachment {
+  id String @id @default(cuid())
+  incidentId String
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  fileName String
+  mimeType String
+  content Bytes
+  sizeBytes Int
+  actor String
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  @@index([incidentId, createdAt])
+}
+
+/// Local checklist photos can be stored atomically in content. Legacy metadata remains valid.
+/// SQL CHECK requires exactly one parent: incident or checklist item.
+model Evidence {
+  content           Bytes?
+  id                String           @id @default(cuid())
+  incidentId        String?
+  incident          Incident?        @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  checklistAnswerId String?
+  checklistAnswer   ChecklistAnswer? @relation(fields: [checklistAnswerId], references: [id], onDelete: Restrict)
+  fileName          String
+  storageKey        String
+  mimeType          String
+  sizeBytes         Int?
+  description       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @default(now()) @updatedAt
+
+  @@index([incidentId])
+  @@index([checklistAnswerId])
+}
+
+model ChecklistCategory {
+  id                 String @id @default(cuid())
+  code               String @unique
+  name               String
+  sortOrder          Int @default(0)
+  inspectionCategory InspectionCategory @default(OTHER)
+  items              ChecklistItemConfig[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model ChecklistItemConfig {
+  id                  String @id @default(cuid())
+  categoryId          String
+  category            ChecklistCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  label               String
+  help                String @default("")
+  problems            String[]
+  priority            Priority @default(MEDIUM)
+  requiresPhoto       Boolean @default(true)
+  generatesIncident   Boolean @default(true)
+  blocksVehicle       Boolean @default(false)
+  allowsNotApplicable Boolean @default(false)
+  /// Empty array means every type. Match the vehicle's profile, or its category if no profile exists.
+  vehicleTypes        String[]
+  active              Boolean @default(true)
+  sortOrder           Int @default(0)
+  answers             ChecklistAnswer[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  @@index([categoryId, active, sortOrder])
+}
+
+model Supplier {
+  incidents   Incident[]
+  id          String          @id @default(cuid())
+  name        String
+  /// Existing name is the legal name (razao social); taxId is CNPJ.
+  tradeName   String?
+  contactName String?
+  email       String?
+  taxId       String          @unique
+  specialty   String
+  phone       String
+  active      Boolean         @default(true)
+  status      SupplierStatus  @default(ACTIVE)
+  maintenance Maintenance[]
+  purchases   PurchaseOrder[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @default(now()) @updatedAt
+
+  @@index([status])
+}
+
+model Maintenance {
+  kind            MaintenanceKind @default(UNSPECIFIED)
+  stage           MaintenanceStage @default(REQUESTED)
+  stageChangedAt  DateTime @default(now())
+  revision        Int @default(0)
+  submissionKey   String? @unique
+  unavailableFrom DateTime?
+  unavailableUntil DateTime?
+  alertAfterHours Int @default(48)
+  criticalAfterHours Int @default(120)
+  solution        String @default("")
+  costKnown       Boolean @default(false)
+  events          MaintenanceEvent[]
+  alert           Alert?
+  id              String               @id @default(cuid())
+  vehicleId       String
+  vehicle         Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  supplierId      String?
+  supplier        Supplier?            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  title           String
+  type            String
+  category        String?
+  description     String               @default("")
+  serviceOrder    String?              @unique
+  requisitionId   String?
+  requisition     PurchaseRequisition? @relation(fields: [requisitionId], references: [id], onDelete: Restrict)
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder?       @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  incidentId      String?
+  incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  budget          Decimal?             @db.Decimal(12, 2)
+  approvedAmount  Decimal?             @db.Decimal(12, 2)
+  enteredAt       DateTime?
+  expectedAt      DateTime?
+  mileage         Int?
+  responsibleId   String?
+  responsible     StaffMember?         @relation(fields: [responsibleId], references: [id], onDelete: Restrict)
+  status          WorkStatus           @default(OPEN)
+  scheduledAt     DateTime?
+  completedAt     DateTime?
+  cost            Decimal              @default(0) @db.Decimal(12, 2)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @default(now()) @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([vehicleId])
+  @@index([supplierId])
+  @@index([requisitionId])
+  @@index([purchaseOrderId])
+  @@index([incidentId])
+  @@index([responsibleId])
+  @@index([expectedAt])
+  @@index([stage, stageChangedAt])
+  @@index([vehicleId, unavailableUntil])
+}
+
+model MaintenanceEvent {
+  id String @id @default(cuid())
+  maintenanceId String
+  maintenance Maintenance @relation(fields: [maintenanceId], references: [id], onDelete: Restrict)
+  actor String
+  note String @default("")
+  before Json?
+  after Json
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  @@index([maintenanceId, createdAt])
+}
+
+model Preventive {
+  id          String    @id @default(cuid())
+  vehicleId   String
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  title       String
+  dueAt       DateTime
+  dueMileage  Int
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([dueAt])
+}
+
+model PreventivePlan {
+  id String @id @default(cuid())
+  vehicleId String @unique
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  intervalKm Int?
+  lastMileage Int?
+  nextMileage Int?
+  lastAt DateTime?
+  dueAt DateTime?
+  toleranceKm Int @default(0)
+  toleranceDays Int @default(0)
+  upcomingKm Int @default(1000)
+  upcomingDays Int @default(7)
+  revision Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  events PreventivePlanEvent[]
+  alert Alert?
+}
+
+model PreventivePlanEvent {
+  id String @id @default(cuid())
+  planId String
+  plan PreventivePlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  actor String
+  note String
+  before Json?
+  after Json
+  createdAt DateTime @default(now())
+  @@index([planId, createdAt])
+}
+
+model MileageReading {
+  id String @id @default(cuid())
+  vehicleId String
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  checklistId String? @unique
+  checklist Checklist? @relation(fields: [checklistId], references: [id], onDelete: Restrict)
+  mileage Int
+  previousMileage Int?
+  accepted Boolean
+  source String
+  actor String
+  createdAt DateTime @default(now())
+  alert Alert?
+  @@index([vehicleId, createdAt])
+}
+
+model Tire {
+  id        String   @id @default(cuid())
+  serial    String   @unique
+  brand     String
+  position  String
+  treadMm   Decimal  @db.Decimal(4, 1)
+  status    String
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  title     String
+  expiresAt DateTime
+  fileUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([expiresAt])
+}
+
+enum PurchaseStage {
+  PENDING
+  APPROVAL
+  APPROVED
+  REJECTED
+  CONTINGENCY
+  ORDERED
+  WAITING_SUPPLIER
+  DELIVERED
+  FINISHED
+  CANCELED
+}
+
+model PurchaseEvent {
+  id String @id @default(cuid())
+  purchaseId String
+  purchase PurchaseOrder @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  actor String
+  note String @default("")
+  before Json?
+  after Json
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  @@index([purchaseId, createdAt])
+}
+
+model PurchaseOrder {
+  orderNumber String? @unique
+  stage PurchaseStage @default(PENDING)
+  stageChangedAt DateTime @default(now())
+  revision Int @default(0)
+  submissionKey String? @unique
+  amountKnown Boolean @default(false)
+  staleAfterDays Int @default(5)
+  events PurchaseEvent[]
+  incidents     Incident[]
+  id            String               @id @default(cuid())
+  number        String               @unique
+  requisitionId String?
+  requisition   PurchaseRequisition? @relation(fields: [requisitionId], references: [id], onDelete: Restrict)
+  description   String
+  status        WorkStatus           @default(OPEN)
+  priority      Priority             @default(MEDIUM)
+  amount        Decimal              @db.Decimal(12, 2)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @default(now()) @updatedAt
+  requestedAt   DateTime             @default(now())
+  requesterId   String?
+  requester     StaffMember?         @relation("PurchaseRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  responsibleId String?
+  responsible   StaffMember?         @relation("PurchaseResponsible", fields: [responsibleId], references: [id], onDelete: Restrict)
+  notes         String               @default("")
+  supplierId    String?
+  supplier      Supplier?            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  vehicleId     String?
+  vehicle       Vehicle?             @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  equipmentId   String?
+  equipment     Equipment?           @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  maintenance   Maintenance[]
+
+  @@index([requisitionId])
+  @@index([vehicleId])
+  @@index([equipmentId])
+  @@index([supplierId])
+  @@index([requesterId])
+  @@index([responsibleId])
+  @@index([status, requestedAt])
+  @@index([stage, stageChangedAt])
+}
+
+enum AlertCategory {
+  CHECKLIST
+  MAINTENANCE
+  PREVENTIVE
+  DOCUMENT
+  PURCHASE
+  TIRE
+  INCIDENT
+}
+
+enum AlertStage {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  HANDLED
+  NOT_APPLICABLE
+  RULE_CLOSED
+}
+
+model AlertEvent {
+  id String @id @default(cuid())
+  alertId String
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Restrict)
+  actor String
+  note String
+  before Json?
+  after Json
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  @@index([alertId, createdAt])
+}
+
+model Alert {
+  category AlertCategory @default(CHECKLIST)
+  stage AlertStage @default(NEW)
+  revision Int @default(0)
+  openedAt DateTime @default(now())
+  closedAt DateTime?
+  closingReason String @default("")
+  actionRequired String @default("Avaliar o registro de origem e registrar o atendimento.")
+  responsibleId String?
+  responsible StaffMember? @relation(fields: [responsibleId], references: [id], onDelete: Restrict)
+  sourceKey String? @unique
+  sourceActive Boolean @default(true)
+  sourceHref String?
+  events AlertEvent[]
+  preventivePlanId String? @unique
+  preventivePlan PreventivePlan? @relation(fields: [preventivePlanId], references: [id], onDelete: Restrict)
+  mileageReadingId String? @unique
+  mileageReading MileageReading? @relation(fields: [mileageReadingId], references: [id], onDelete: Restrict)
+  maintenanceId String? @unique
+  maintenance Maintenance? @relation(fields: [maintenanceId], references: [id], onDelete: Restrict)
+  evaluationId String? @unique
+  evaluation ChecklistEvaluation? @relation(fields: [evaluationId], references: [id], onDelete: Restrict)
+  id          String     @id @default(cuid())
+  title       String
+  description String
+  priority    Priority
+  status      WorkStatus @default(OPEN)
+  module      String
+  vehicleId   String?
+  vehicle     Vehicle?   @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+
+  @@index([status, priority])
+  @@index([stage, priority, openedAt])
+  @@index([category, openedAt])
+  @@index([responsibleId])
+}
+
+/// Immutable processing record. Restrict deletes to preserve the original answer and generated incident.
+model ChecklistEvaluation {
+  restriction         VehicleRestriction?
+  id                  String @id @default(cuid())
+  answerId            String @unique
+  answer              ChecklistAnswer @relation(fields: [answerId], references: [id], onDelete: Restrict)
+  incidentId          String? @unique
+  incident            Incident? @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  alert               Alert?
+  priority            Priority
+  createsIncident     Boolean
+  blocksVehicle       Boolean
+  ruleSnapshot        Json
+  configVersion       String
+  engineVersion       String
+  evaluatedAt         DateTime @default(now())
+  vehicleStatusBefore VehicleStatus
+  vehicleStatusAfter  VehicleStatus
+  availabilityBefore  Availability
+  availabilityAfter   Availability
+  @@index([priority, evaluatedAt])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model VehicleRestriction {
+  id String @id @default(cuid())
+  vehicleId String
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  incidentId String?
+  incident Incident? @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  evaluationId String? @unique
+  evaluation ChecklistEvaluation? @relation(fields: [evaluationId], references: [id], onDelete: Restrict)
+  reason String
+  state RestrictionState @default(AWAITING_ASSESSMENT)
+  releaseEvidenceRequired Boolean @default(true)
+  revision Int @default(0)
+  detectedAt DateTime @default(now())
+  releasedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  events RestrictionEvent[]
+  @@index([vehicleId, state])
+  @@index([incidentId])
+}
+
+model RestrictionEvent {
+  id String @id @default(cuid())
+  restrictionId String
+  restriction VehicleRestriction @relation(fields: [restrictionId], references: [id], onDelete: Restrict)
+  actor String
+  decision RestrictionState
+  solution String @default("")
+  notes String
+  before Json?
+  after Json
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  evidence RestrictionEvidence[]
+  @@index([restrictionId, createdAt])
+}
+
+model RestrictionEvidence {
+  id String @id @default(cuid())
+  eventId String
+  event RestrictionEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  fileName String
+  mimeType String
+  content Bytes
+  sizeBytes Int
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  @@index([eventId])
+}
+
+model RestrictionPolicyEvent {
+  id String @id @default(cuid())
+  actor String
+  before Json
+  after Json
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+}

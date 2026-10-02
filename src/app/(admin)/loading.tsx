@@ -1,0 +1,1 @@
+export default function Loading() { return <div className="page" aria-live="polite"><p className="text-slate-500">Carregando informações da frota…</p><div className="mt-6 h-40 animate-pulse rounded-xl bg-slate-200"/></div>; }

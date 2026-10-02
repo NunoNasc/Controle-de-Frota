@@ -1,0 +1,70 @@
+import { chromium } from '@playwright/test';
+import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+process.loadEnvFile('.env');
+const base = 'http://127.0.0.1:3000';
+const db = new PrismaClient();
+const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+const errors = []; page.on('pageerror', e => errors.push(e.message));
+const id = `qa-${randomUUID()}`;
+try {
+  await mkdir('test-results', { recursive: true });
+  await page.goto(base); await page.getByRole('heading', { name: 'Dashboard Operacional' }).waitFor();
+  await page.screenshot({ path: 'test-results/dashboard-desktop.png', fullPage: true });
+  await page.getByRole('button', { name: 'Recolher menu' }).click();
+  assert.equal(await page.locator('.app-shell').evaluate(el => el.classList.contains('is-collapsed')), true);
+  await page.getByRole('button', { name: 'Expandir menu' }).click();
+  await page.getByLabel('Veículo', { exact:true }).selectOption('FT-005');
+  await page.waitForURL('**/?vehicle=FT-005'); await page.locator('[data-metric=frota]').getByText('01', { exact: true }).waitFor();
+  await page.getByLabel('Veículo', { exact:true }).selectOption('');
+  const modules = [['alertas','Central de Alertas'],['checklists','Checklists'],['ocorrencias','Ocorrências'],['frota','Frota'],['manutencoes','Manutenções'],['preventivas','Preventivas'],['pneus','Pneus'],['compras','Pedidos de Compras'],['fornecedores','Fornecedores'],['motoristas','Motoristas'],['relatorios','Relatórios'],['configuracoes','Configurações'],['documentos','Documentos']];
+  for (const [slug,title] of modules) { const response = await page.goto(`${base}/${slug}`); assert.equal(response.status(),200,slug); await page.getByRole('heading', { name: title, exact: true }).waitFor(); }
+  await page.goto(`${base}/frota`); await page.getByLabel('Buscar em Frota').fill('ABC1D23'); assert.equal(await page.locator('tbody tr').count(),1);
+  await page.getByLabel('Buscar em Frota').fill('SEM-RESULTADO'); await page.getByText('Nenhum registro encontrado').waitFor();
+  await page.getByRole('button', { name: 'Limpar filtros' }).click();
+  const downloadPromise = page.waitForEvent('download'); await page.getByRole('button', { name: 'Exportar CSV' }).click(); const download = await downloadPromise; assert.match(download.suggestedFilename(), /\.csv$/);
+  await page.getByLabel('Detalhes de ABC1D23').click(); await page.getByRole('heading', { name: 'ABC1D23', exact: true }).waitFor(); assert.equal(await page.getByAltText('QR Code do checklist do veículo ABC1D23').count(),1);
+  for (const [name,width,height] of [['tablet',820,1180],['mobile',390,844]]) {
+    await page.setViewportSize({ width,height }); await page.goto(base); await page.getByRole('heading', { name: 'Dashboard Operacional' }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),true,`overflow ${name}`);
+    await page.screenshot({ path: `test-results/dashboard-${name}.png`, fullPage: true });
+  }
+  await page.getByRole('button', { name: 'Abrir menu' }).click(); await page.getByRole('link', { name: 'Motoristas', exact: true }).click(); await page.getByRole('heading', { name: 'Motoristas', exact: true }).waitFor();
+  const vehicle = await db.vehicle.create({ data: { id, plate: id, code: id, model: 'Veículo de teste automatizado', category: 'Leve', year: 2026, mileage: 100, unit: 'QA' } });
+  await page.goto(`${base}/checklist/${vehicle.qrToken}`);
+  assert.equal(await page.getByRole('navigation').count(),0,'driver has no admin navigation');
+  await page.getByLabel('Seu nome').fill('Motorista de teste'); await page.getByLabel('Quilometragem atual').fill('110');
+  for (const item of ['tires','lights','brakes','fluids','safety','body']) await page.locator(`input[name="${item}"][value="${item === 'brakes' ? 'ISSUE' : 'OK'}"]`).check();
+  await page.screenshot({ path: 'test-results/checklist-mobile.png', fullPage: true });
+  await page.getByRole('button', { name: 'Enviar checklist' }).click(); await page.getByRole('heading', { name: 'Checklist enviado!' }).waitFor();
+  const saved = await db.checklist.findFirstOrThrow({ where: { vehicleId: id }, include: { answers: true } });
+  assert.equal(saved.answers.length,6); assert.equal(saved.result,'ISSUE');
+  assert.equal(saved.hasProblem,true); assert.equal(Number(saved.conformityPercentage),83.33); assert.equal(saved.type,'PRE_TRIP');
+  const incident = await db.incident.findFirstOrThrow({ where: { vehicleId:id } });
+  assert.equal(incident.checklistId,saved.id); assert.equal(incident.origin,'CHECKLIST'); assert.equal(incident.vehicleBlocked,true); assert.ok(incident.number > 0);
+  const brake = saved.answers.find(a => a.item === 'brakes');
+  assert.equal(brake.category,'BRAKES'); assert.equal(brake.priority,'CRITICAL'); assert.equal(brake.generatesIncident,true); assert.equal(brake.incidentId,incident.id);
+  assert.equal(await db.incident.count({ where: { vehicleId: id } }),1); assert.equal(await db.alert.count({ where: { vehicleId: id } }),1);
+  assert.equal((await db.vehicle.findUniqueOrThrow({ where: { id } })).status,'STOPPED');
+  assert.equal((await db.vehicle.findUniqueOrThrow({ where: { id } })).availability,'UNAVAILABLE');
+  const body = { driverName: saved.driverName, mileage: saved.mileage, notes: '', submissionKey: saved.submissionKey, answers: saved.answers.map(a => ({ item: a.item, answer: a.answer })) };
+  const api = `${base}/api/checklist/${vehicle.qrToken}`;
+  const repeat = await fetch(api, { method:'POST', headers: { 'Content-Type':'application/json', Origin:base }, body:JSON.stringify(body) }); assert.equal(repeat.status,201); assert.equal(await db.checklist.count({ where:{ vehicleId:id } }),1,'idempotency');
+  const stale = await fetch(api, { method:'POST', headers: { 'Content-Type':'application/json', Origin:base }, body:JSON.stringify({ ...body, submissionKey: randomUUID(), mileage: 90 }) }); assert.equal(stale.status,400);
+  const crossOrigin = await fetch(api, { method:'POST', headers: { 'Content-Type':'application/json', Origin:'https://invalid.example' }, body:JSON.stringify(body) }); assert.equal(crossOrigin.status,403);
+  const driver = await db.driver.findUniqueOrThrow({ where:{ employeeId:'M001' } });
+  const located = await fetch(api, { method:'POST', headers:{ 'Content-Type':'application/json', Origin:base }, body:JSON.stringify({ ...body, submissionKey:randomUUID(), driverId:driver.id, type:'POST_TRIP', location:{ latitude:-12.9,longitude:-38.5,accuracy:15 }, answers:body.answers.map(a => ({ ...a,answer:'OK',notes:'Conferido' })) }) });
+  assert.equal(located.status,201); const locatedBody = await located.json();
+  const locatedChecklist = await db.checklist.findUniqueOrThrow({ where:{ id:locatedBody.id } });
+  assert.equal(locatedChecklist.driverId,driver.id); assert.equal(locatedChecklist.type,'POST_TRIP'); assert.equal(Number(locatedChecklist.latitude),-12.9); assert.equal(Number(locatedChecklist.conformityPercentage),100);
+  const invalidDriver = await fetch(api, { method:'POST', headers:{ 'Content-Type':'application/json', Origin:base }, body:JSON.stringify({ ...body, submissionKey:randomUUID(),driverId:'missing-driver' }) }); assert.equal(invalidDriver.status,400);
+  const invalid = await page.goto(`${base}/checklist/not-a-token`); assert.equal(invalid.status(),404);
+  assert.deepEqual(errors,[]);
+  console.log('PASS: 13 módulos, filtros, exportação, QR, desktop/tablet/mobile, navegação móvel, checklist persistido, ocorrência e alerta transacionais, idempotência, quilometragem e proteção de origem.');
+} finally {
+  await db.$transaction([db.alert.deleteMany({ where:{ vehicleId:id } }),db.checklistAnswer.deleteMany({ where:{ checklist:{ vehicleId:id } } }),db.incident.deleteMany({ where:{ vehicleId:id } }),db.checklist.deleteMany({ where:{ vehicleId:id } }),db.vehicle.deleteMany({ where:{ id } })]);
+  await db.$disconnect(); await browser.close();
+}

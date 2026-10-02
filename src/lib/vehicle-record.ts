@@ -1,0 +1,8 @@
+import {z} from 'zod';
+export const vehicleTabs={resumo:'Resumo',checklists:'Checklists',ocorrencias:'Ocorrências',manutencoes:'Manutenções',preventivas:'Preventivas',pneus:'Pneus',abastecimentos:'Abastecimentos',custos:'Custos',documentos:'Documentos',historico:'Histórico'} as const;
+export type VehicleTab=keyof typeof vehicleTabs;
+export function vehicleRecordWhere(value:string){const plate=value.toUpperCase().replace(/-/g,'');return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate)?{plate}:{id:value};}
+export function displayPlate(plate:string){return /^[A-Z]{3}\d{4}$/.test(plate)?`${plate.slice(0,3)}-${plate.slice(3)}`:plate;}
+export function safeDocumentUrl(value:string|null){if(!value)return null;if(value.startsWith('/')&&!value.startsWith('//')&&!value.includes('\\'))return value;try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)?url.href:null;}catch{return null;}}
+export const fuelTypes={DIESEL:'Diesel',GASOLINE:'Gasolina',ETHANOL:'Etanol',ARLA:'ARLA 32',OTHER:'Outro'} as const;
+export const fuelSchema=z.object({vehicleId:z.string().min(1).max(100),submissionKey:z.uuid(),fueledAt:z.iso.datetime({offset:true}),mileage:z.number().int().min(0).max(9999999),fuelType:z.enum(['DIESEL','GASOLINE','ETHANOL','ARLA','OTHER']),liters:z.number().positive().max(9999999.999).refine(n=>Math.abs(n*1000-Math.round(n*1000))<0.00001),amount:z.number().min(0).max(9999999999.99).refine(n=>Math.abs(n*100-Math.round(n*100))<0.00001),station:z.string().trim().max(150),notes:z.string().trim().max(2000),operatorName:z.string().trim().min(3).max(100),operatorId:z.string().trim().min(1).max(60)}).strict();

@@ -1,0 +1,23 @@
+'use client';
+import {useState} from 'react';
+import {useRouter} from 'next/navigation';
+import {Button} from '@/components/ui/button';
+import {restrictionLabels,safetyNotice} from '@/lib/restrictions';
+export function RestrictionDecisionForm({id,revision,state,requiresEvidence,otherActive}:{id:string;revision:number;state:'AWAITING_ASSESSMENT'|'BLOCKED';requiresEvidence:boolean;otherActive:number}){
+ const router=useRouter();const [decision,setDecision]=useState<string>(state),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+ async function save(event:React.FormEvent<HTMLFormElement>){
+  event.preventDefault();setBusy(true);setMessage('');const data=new FormData(event.currentTarget);const text=(key:string)=>String(data.get(key)??'');
+  try{
+   const file=data.get('evidence');let attachment;
+   if(file instanceof File&&file.size){if(file.size>5*1024*1024)throw new Error('A evidência deve ter até 5 MB.');const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler a evidência.'));reader.readAsDataURL(file);});attachment={fileName:file.name,mimeType:file.type,base64};}
+   const response=await fetch(`/api/admin/restrictions/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision,operatorName:text('operatorName'),operatorId:text('operatorId'),decision,solution:text('solution'),notes:text('notes'),postReleaseStatus:text('postReleaseStatus')||'UNKNOWN',attachment})});
+   const result=await response.json();if(!response.ok)throw new Error(result.error??'Não foi possível registrar.');router.refresh();setMessage('Decisão registrada no histórico.');
+  }catch(error){setMessage(error instanceof Error?error.message:'Falha ao registrar.');}finally{setBusy(false);}
+ }
+ return <form onSubmit={save} className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4"><h3 className="mb-3 font-semibold">Avaliar restrição</h3><fieldset disabled={busy} className="grid min-w-0 gap-4"><div className="grid gap-3 sm:grid-cols-2"><label className="grid min-w-0 gap-1 text-sm">Responsável pela avaliação / liberação<input name="operatorName" className="field w-full" minLength={3} maxLength={100} required/></label><label className="grid min-w-0 gap-1 text-sm">Matrícula / identificação<input name="operatorId" className="field w-full" maxLength={60} required/></label></div><p className="text-xs text-slate-500">Identificação autodeclarada no ambiente local, ainda sem login. A data e a hora são registradas pelo sistema.</p>
+ <label className="grid gap-1 text-sm">Decisão<select className="field w-full" value={decision} onChange={e=>setDecision(e.target.value)}>{Object.entries(restrictionLabels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+ {decision==='RELEASED'&&<><label className="grid gap-1 text-sm">Solução aplicada<textarea name="solution" className="field w-full" rows={3} required minLength={5} maxLength={5000}/></label>{otherActive>0?<p className="rounded-lg bg-amber-100 p-3 text-sm text-amber-950">Existem {otherActive} outras restrições ativas. Esta decisão libera somente o problema acima; o veículo continuará com restrição operacional.</p>:<label className="grid gap-1 text-sm">Situação após a última liberação<select name="postReleaseStatus" className="field w-full" defaultValue="UNKNOWN"><option value="UNKNOWN">Disponibilidade ainda não informada</option><option value="AVAILABLE">Disponível — após avaliação técnica</option><option value="MAINTENANCE">Manter em manutenção</option><option value="STOPPED">Manter parado por outro motivo</option></select></label>}</>}
+ <label className="grid gap-1 text-sm">Observação da avaliação<textarea name="notes" className="field w-full" rows={3} required minLength={3} maxLength={5000}/></label>
+ <label className="grid min-w-0 gap-1 text-sm">Evidência {decision==='RELEASED'&&requiresEvidence?'obrigatória para liberação':'(opcional)'}<input name="evidence" type="file" accept="image/jpeg,image/png,application/pdf" className="field w-full min-w-0 text-xs" required={decision==='RELEASED'&&requiresEvidence}/><span className="text-xs text-slate-500">Foto JPEG/PNG ou documento PDF · até 5 MB. A evidência da liberação deve ser anexada neste atendimento.</span></label>
+ <p className="text-xs leading-relaxed text-slate-600">{safetyNotice}</p><Button type="submit">{busy?'Registrando…':decision==='RELEASED'?'Registrar liberação':'Registrar avaliação'}</Button></fieldset>{message&&<p role="status" className="mt-3 text-sm text-slate-700">{message}</p>}</form>;
+}

@@ -1,0 +1,2 @@
+ALTER TYPE "VehicleStatus" ADD VALUE 'UNKNOWN';
+ALTER TYPE "Availability" ADD VALUE 'UNKNOWN';

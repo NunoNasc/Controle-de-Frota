@@ -1,0 +1,1 @@
+export default function InvalidQr(){return <main className="mx-auto max-w-lg p-6"><h1 className="text-2xl font-semibold">QR Code inválido ou substituído</h1><p className="mt-4">Solicite à Frota a etiqueta atualizada deste veículo. Nenhum checklist foi enviado por este acesso.</p></main>;}

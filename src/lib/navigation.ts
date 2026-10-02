@@ -1,0 +1,17 @@
+export const navigation = [
+  { slug: '', label: 'Dashboard', icon: 'dashboard', group: 'VISÃO GERAL' },
+  { slug: 'alertas', label: 'Central de Alertas', icon: 'bell' },
+  { slug: 'painel', label: 'Painel Operacional', icon: 'dashboard' },
+  { slug: 'checklists', label: 'Checklists', icon: 'check', group: 'OPERAÇÃO' },
+  { slug: 'ocorrencias', label: 'Ocorrências', icon: 'alert' },
+  { slug: 'frota', label: 'Frota', icon: 'truck' },
+  { slug: 'manutencoes', label: 'Manutenções', icon: 'wrench' },
+  { slug: 'preventivas', label: 'Preventivas', icon: 'calendar' },
+  { slug: 'pneus', label: 'Pneus', icon: 'circle' },
+  { slug: 'compras', label: 'Pedidos de Compras', icon: 'cart', group: 'GESTÃO' },
+  { slug: 'fornecedores', label: 'Fornecedores', icon: 'building' },
+  { slug: 'motoristas', label: 'Motoristas', icon: 'users' },
+  { slug: 'relatorios', label: 'Relatórios', icon: 'chart' },
+  { slug: 'indicadores', label: 'Indicadores', icon: 'chart' },
+  { slug: 'configuracoes', label: 'Configurações', icon: 'settings' },
+] as const;

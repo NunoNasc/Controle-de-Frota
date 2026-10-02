@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: frota
+      POSTGRES_PASSWORD: frota_local_dev
+      POSTGRES_DB: frota
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - frota_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U frota -d frota"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  frota_data:
