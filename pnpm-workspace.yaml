@@ -1,4 +1,6 @@
 allowBuilds:
+  # Vercel usa PostgreSQL externo; não instalar o servidor local no build Linux.
+  '@embedded-postgres/linux-x64': false
   '@embedded-postgres/windows-x64': true
   unrs-resolver: true
   '@prisma/client': true
