@@ -1,14 +1,13 @@
-# Recursos pagos: conferir valores e aprovar no Render antes de aplicar.
+# Piloto gratuito: Render Free + PostgreSQL externo no Supabase.
 services:
   - type: web
     name: central-controle-frota
     runtime: node
-    plan: 0.5c-512mb
+    plan: free
     region: virginia
     branch: main
     autoDeployTrigger: commit
     buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm build
-    preDeployCommand: pnpm exec prisma migrate deploy
     startCommand: pnpm exec next start --hostname 0.0.0.0 --port $PORT
     envVars:
       - key: NODE_VERSION
@@ -16,15 +15,6 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: central-controle-frota-db
-          property: connectionString
+        sync: false
       - key: APP_URL
         sync: false
-databases:
-  - name: central-controle-frota-db
-    plan: 0.1c-256mb
-    region: virginia
-    databaseName: central_frota
-    user: central_frota
-    ipAllowList: []
